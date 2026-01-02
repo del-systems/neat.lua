@@ -16,9 +16,21 @@ local function calculate_fitness_for_wiggle(world)
 end
 
 local max_movement_speed = 400
+local use_existing_model = true
 
 local function new_world(genome)
-  local genome = genome or neat.create_genome({ input_count = 3, output_count = 1 })
+  if not genome then
+    genome = neat.create_genome({ input_count = 3, output_count = 1 })
+    if use_existing_model then
+      lume.each(genome.connections, function (c) c.enabled = false end)
+      genome.nodes[4].activation = neat.get_default_activation_by_name("tanh")
+      table.insert(genome.nodes, { id = 5, type = "hidden", activation = neat.get_default_activation_by_name("relu") })
+      table.insert(genome.connections, { in_node = 1, out_node = 4, weight = 0.75, enabled = true, innovation = 2 })
+      table.insert(genome.connections, { in_node = 2, out_node = 4, weight = 2.08, enabled = true, innovation = 3 })
+      table.insert(genome.connections, { in_node = 3, out_node = 5, weight = 0.76, enabled = true, innovation = 4 })
+      table.insert(genome.connections, { in_node = 5, out_node = 4, weight = 0.26, enabled = true, innovation = 5 })
+    end
+  end
   local world = game_engine.new_world()
   world.genome = genome
   genome.fitness = 0

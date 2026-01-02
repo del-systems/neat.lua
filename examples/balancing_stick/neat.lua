@@ -65,6 +65,26 @@ local function get_innovation(settings)
   return settings.innovation_counter
 end
 
+function NEAT.get_default_activation_by_name(name)
+  if name == "identity" then
+    return default_identity_activation
+  end
+
+  for _, v in ipairs(default_activations) do
+    if v.name == name then
+      return v
+    end
+  end
+
+  for _, v in ipairs(default_output_activations) do
+    if v.name == name then
+      return v
+    end
+  end
+
+  return nil
+end
+
 function NEAT.create_genome(settings)
   local settings = settings or default_settings
   local input_count = settings.input_count

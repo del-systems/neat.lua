@@ -418,7 +418,7 @@ function NEAT.draw_node_connections(genome)
   for _, node in ipairs(genome.nodes) do
     node_map[node.id] = node
     -- Initialize layout data
-    node._depth = 0 
+    node._depth = 0
     node._layer_idx = 0
 
     if node.type == "input" then table.insert(inputs, node)
@@ -440,7 +440,7 @@ function NEAT.draw_node_connections(genome)
         local n_out = node_map[conn.out_node]
 
         if n_in and n_out then
-          -- If flow is forward (avoid pushing depth for recurrent links if possible, 
+          -- If flow is forward (avoid pushing depth for recurrent links if possible,
           -- though simple recurrence will just hit the iteration cap)
           if n_out.type ~= "input" then
             if n_out._depth < n_in._depth + 1 then

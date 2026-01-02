@@ -311,6 +311,11 @@ function NEAT.evolve_population(population, settings)
     NEAT.mutate_toggle_connection(r)
   end
 
+  -- 6. reset fitness values for the next values
+  for _, g in ipairs(next_gen) do
+    g.fitness = 0
+  end
+
   return next_gen
 end
 
@@ -392,4 +397,146 @@ function NEAT.to_mermaid(genome)
   return table.concat(lines, "\n")
 end
 
+-- draw the node structure
+function NEAT.draw_node_connections(genome)
+  local width = love.graphics.getWidth()
+  local height = love.graphics.getHeight()
+  local canvas = love.graphics.getCanvas()
+  if canvas then
+    width, height = canvas:getDimensions()
+  end
+  local padding_x = 50
+  local padding_y = 50
+  local node_radius = 6
+
+  -- 1. Map nodes by ID for quick lookup
+  local node_map = {}
+  local inputs = {}
+  local outputs = {}
+  local hidden = {}
+
+  for _, node in ipairs(genome.nodes) do
+    node_map[node.id] = node
+    -- Initialize layout data
+    node._depth = 0
+    node._layer_idx = 0
+
+    if node.type == "input" then table.insert(inputs, node)
+    elseif node.type == "output" then table.insert(outputs, node)
+    else table.insert(hidden, node) end
+  end
+
+  -- 2. Calculate Depth (Layering)
+  -- Inputs are always depth 0. Propagate depth to hidden/output nodes.
+  -- We loop enough times to propagate through the network.
+  local max_depth = 1
+  local iterations = #genome.nodes + 2 -- Cap iterations to prevent infinite loops from recurrent connections
+
+  for i = 1, iterations do
+    local changed = false
+    for _, conn in ipairs(genome.connections) do
+      if conn.enabled then
+        local n_in = node_map[conn.in_node]
+        local n_out = node_map[conn.out_node]
+
+        if n_in and n_out then
+          -- If flow is forward (avoid pushing depth for recurrent links if possible,
+          -- though simple recurrence will just hit the iteration cap)
+          if n_out.type ~= "input" then
+            if n_out._depth < n_in._depth + 1 then
+              n_out._depth = n_in._depth + 1
+              changed = true
+              if n_out._depth > max_depth then max_depth = n_out._depth end
+            end
+          end
+        end
+      end
+    end
+    if not changed then break end
+  end
+
+  -- Force outputs to the far right (max_depth) for visual clarity
+  for _, node in ipairs(outputs) do
+    node._depth = max_depth
+  end
+
+  -- 3. Group nodes by depth to calculate Y positions
+  local layers = {}
+  for i = 0, max_depth do layers[i] = {} end
+
+  -- Add nodes to their respective layer buckets
+  for _, node in ipairs(genome.nodes) do
+    -- Safety clamp in case of detached nodes
+    local d = math.min(node._depth, max_depth)
+    table.insert(layers[d], node)
+  end
+
+  -- 4. Assign Coordinates
+  for d = 0, max_depth do
+    local layer_nodes = layers[d]
+    -- Sort by ID to keep consistent vertical order between frames
+    table.sort(layer_nodes, function(a,b) return a.id < b.id end)
+
+    local count = #layer_nodes
+    local col_x = padding_x + (d / max_depth) * (width - 2 * padding_x)
+
+    for i, node in ipairs(layer_nodes) do
+      node.x = col_x
+      -- Distribute vertically
+      node.y = padding_y + (i - 0.5) * ((height - 2 * padding_y) / math.max(count, 1))
+    end
+  end
+
+  -- 5. Draw Connections
+  for _, conn in ipairs(genome.connections) do
+    if conn.enabled then
+      local n1 = node_map[conn.in_node]
+      local n2 = node_map[conn.out_node]
+
+      if n1 and n2 then
+        -- Visual settings
+        if conn.weight > 0 then love.graphics.setColor(0, 1, 0, 1)
+        else love.graphics.setColor(1, 0, 0, 1) end
+
+        love.graphics.setLineWidth(math.max(1, math.abs(conn.weight) * 2))
+        love.graphics.line(n1.x, n1.y, n2.x, n2.y)
+
+        -- Draw Weight Label
+        local mid_x = (n1.x + n2.x) / 2
+        local mid_y = (n1.y + n2.y) / 2
+        local weight_str = string.format("%.2f", conn.weight)
+        local font = love.graphics.getFont()
+        local text_w = font:getWidth(weight_str)
+        local text_h = font:getHeight()
+
+        -- Background box for text
+        love.graphics.setColor(0, 0, 0, 0.7)
+        love.graphics.rectangle("fill", mid_x - text_w/2 - 2, mid_y - text_h/2 - 2, text_w + 4, text_h + 4)
+
+        -- Text
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.print(weight_str, mid_x - text_w/2, mid_y - text_h/2)
+      end
+    end
+  end
+
+  -- 6. Draw Nodes
+  for _, node in ipairs(genome.nodes) do
+    -- Node circle
+    love.graphics.setColor(0.1, 0.1, 0.1)
+    love.graphics.circle("fill", node.x, node.y, node_radius)
+
+    -- Node outline (Color by type)
+    if node.type == "input" then love.graphics.setColor(0.2, 0.6, 1)      -- Blue
+    elseif node.type == "output" then love.graphics.setColor(1, 0.6, 0.2) -- Orange
+    else love.graphics.setColor(1, 1, 1) end                              -- White
+
+    love.graphics.setLineWidth(2)
+    love.graphics.circle("line", node.x, node.y, node_radius)
+
+    -- Node Label
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.print(node.activation.name or node.id, node.x + node_radius + 4, node.y - 8)
+  end
+end
 return NEAT

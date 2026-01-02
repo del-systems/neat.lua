@@ -4,7 +4,7 @@ function game_engine.new_world()
   local world = {
     width = 640,
     height = 480,
-    meter = 64
+    meter = 64,
   }
 
   world.physics_world = love.physics.newWorld(0, 9.81 * world.meter, false)
@@ -25,7 +25,10 @@ function game_engine.new_world()
   world.physics_world:setCallbacks(function(fixtureA, fixtureB)
     if (fixtureA == world.platform.fixture and fixtureB == world.stick.fixture) or
       (fixtureA == world.stick.fixture and fixtureB == world.platform.fixture) then
-      world.failed = true
+      local cb = world.objects_contacted
+      if cb then
+        cb()
+      end
     end
   end)
 
@@ -37,10 +40,10 @@ function game_engine.update(world, dt)
 end
 
 function game_engine.draw(world)
-  love.graphics.setColor(0.28, 0.63, 0.05)
+  --love.graphics.setColor(0.05, 0.63, 0.05)
   love.graphics.polygon("fill", world.platform.body:getWorldPoints(world.platform.shape:getPoints()))
 
-  love.graphics.setColor(0.76, 0.18, 0.05)
+  --love.graphics.setColor(0.76, 0.18, 0.05)
   love.graphics.polygon("fill", world.stick.body:getWorldPoints(world.stick.shape:getPoints()))
 end
 

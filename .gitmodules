@@ -1,0 +1,6 @@
+[submodule "examples/balancing_stick/lurker"]
+	path = examples/balancing_stick/lurker
+	url = https://github.com/rxi/lurker.git
+[submodule "examples/balancing_stick/lume"]
+	path = examples/balancing_stick/lume
+	url = https://github.com/rxi/lume.git

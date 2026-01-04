@@ -21,6 +21,22 @@ local default_activations = {
   {
     name = "leaky_relu",
     fn = function(x) return x > 0 and x or 0.01 * x end
+  },
+  {
+    name = "gaussian",
+    fn = function(x) return math.exp(-(x * x)) end
+  },
+  {
+    name = "sin",
+    fn = function(x) return math.sin(x) end
+  },
+  {
+    name = "cos",
+    fn = function(x) return math.cos(x) end
+  },
+  {
+    name = "abs",
+    fn = function(x) return math.abs(x) end
   }
 }
 
@@ -328,7 +344,7 @@ function NEAT.evolve_population(population, settings)
 
     -- 5. heal 'disabled' viruses. toggle connection for a random chosen one
     local r = population[rng:random(elitism_count + survivors_count, #next_gen)]
-    NEAT.mutate_toggle_connection(r)
+    NEAT.mutate_toggle_connection(r, settings)
   end
 
   -- 6. reset fitness values for the next values

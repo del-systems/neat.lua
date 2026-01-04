@@ -376,7 +376,12 @@ function NEAT.evaluate(genome, inputs, settings)
     if node.type == "output" then table.insert(results, values[node.id] or 0) end
   end
 
-  return results
+  local return_values = {}
+  for i, v in ipairs(results) do
+    table.insert(return_values, v)
+  end
+
+  return return_values
 end
 
 -- human-readable text summary of the genome

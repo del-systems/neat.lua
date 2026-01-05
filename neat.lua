@@ -54,6 +54,7 @@ local default_output_activations = {
 local default_rng = love.math.newRandomGenerator()
 local default_elitism_ratio = 0.1
 local default_survival_ratio = 0.5
+local default_min_fitness = 1
 local default_settings = {}
 
 local function get_random_activation(settings)
@@ -349,6 +350,10 @@ function NEAT.evolve_population(population, settings)
 
   -- 6. reset fitness values for the next values
   for _, g in ipairs(next_gen) do
+    -- 7. mutate every genome if its low
+    if g.fitness < (settings.min_fitness or default_min_fitness) then
+      NEAT.mutate(g, settings)
+    end
     g.fitness = 0
   end
 
@@ -367,7 +372,11 @@ function NEAT.evaluate(genome, inputs, settings)
     if conn.enabled and values[conn.in_node] then
       local node = genome.nodes[conn.out_node]
       local input = values[conn.in_node] * conn.weight
-      values[conn.out_node] = node.activation.fn( (values[conn.out_node] or 0) + input )
+      if not node then
+        print('WTF')
+        NEAT.print_genome(genome)
+      end
+      values[conn.out_node] = (node.activation.fn or NEAT.get_default_activation_by_name(node.activation.name))( (values[conn.out_node] or 0) + input )
     end
   end
 
@@ -382,6 +391,34 @@ function NEAT.evaluate(genome, inputs, settings)
   end
 
   return return_values
+end
+
+-- make a copy of a genome purely transferable between threads and serialization
+-- be aware that custom activations and rng seed is lost
+function NEAT.purify_genome(genome)
+  local copy = {
+    fitness = genome.fitness,
+    settings = {},
+    nodes = {},
+    connections = {}
+  }
+
+  copy.settings.innovation_counter = genome.settings.innovation_counter
+  for _, node in ipairs(genome.nodes) do
+    table.insert(copy.nodes, { id = node.id, type = node.type, activation = { name = node.activation.name } })
+  end
+
+  for _, conn in ipairs(genome.connections) do
+    table.insert(copy.connections, {
+      in_node = conn.in_node,
+      out_node = conn.out_node,
+      weight = conn.weight,
+      innovation = conn.innovation,
+      enabled = conn.enabled
+    })
+  end
+
+  return copy
 end
 
 -- human-readable text summary of the genome

@@ -376,7 +376,7 @@ function NEAT.evaluate(genome, inputs, settings)
         print('WTF')
         NEAT.print_genome(genome)
       end
-      values[conn.out_node] = (node.activation.fn or NEAT.get_default_activation_by_name(node.activation.name))( (values[conn.out_node] or 0) + input )
+      values[conn.out_node] = (node.activation.fn or NEAT.get_default_activation_by_name(node.activation.name).fn)( (values[conn.out_node] or 0) + input )
     end
   end
 

@@ -138,7 +138,7 @@ function NEAT.crossover(parent1, parent2, settings)
 
   if parent2.fitness > parent1.fitness then parent1, parent2 = parent2, parent1 end
 
-  local child = {nodes = {}, connections = {}, fitness = 0}
+  local child = {nodes = {}, connections = {}, fitness = 0, settings = parent1.settings}
 
   -- Inherit nodes from more fit parent
   for _, node in ipairs(parent1.nodes) do

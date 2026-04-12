@@ -42,20 +42,23 @@ local default_activations = {
 
 local default_output_activations = {
   {
-    name = "sigmoid",
-    fn = function(x) return 1 / (1 + math.exp(-x)) end
-  },
-  {
     name = "tanh",
     fn = function(x) return math.tanh(x) end
+  },
+  {
+    name = "sigmoid",
+    fn = function(x) return 1 / (1 + math.exp(-x)) end
   }
 }
 
 local default_rng = love.math.newRandomGenerator()
 local default_elitism_ratio = 0.1
 local default_survival_ratio = 0.5
-local default_min_fitness = 1
-local default_settings = {}
+local default_settings = {
+  mutation_activation_prob = 0.2, -- Increased from 0.1
+  mutation_add_node_prob = 0.15, -- Increased from 0.1
+  mutation_add_conn_prob = 0.1,  -- Increased from 0.05
+}
 
 local function get_random_activation(settings)
   local settings = settings or default_settings
@@ -106,22 +109,57 @@ function NEAT.create_genome(settings)
   local settings = settings or default_settings
   local input_count = settings.input_count
   local output_count = settings.output_count
+  local hidden_layers_count = settings.hidden_layers_count or 0
+  local nodes_per_layer = settings.nodes_per_layer or 5
   local output_activations = settings.output_activations or default_output_activations
 
   local genome = {nodes = {}, connections = {}, fitness = 0, settings = settings}
+  
+  -- Create Input Nodes
+  local inputs = {}
   for i = 1, input_count do
-    table.insert(genome.nodes, {id = i, type = "input", activation = default_identity_activation})
+    local node = {id = #genome.nodes + 1, type = "input", activation = default_identity_activation}
+    table.insert(genome.nodes, node)
+    table.insert(inputs, node.id)
   end
-  for i = 1, output_count do
-    table.insert(genome.nodes, {id = input_count + i, type = "output", activation = output_activations[1]})
+  
+  local last_layer_nodes = inputs
+
+  -- Create Hidden Layers
+  for l = 1, hidden_layers_count do
+    local current_layer_nodes = {}
+    for i = 1, nodes_per_layer do
+      local node = {id = #genome.nodes + 1, type = "hidden", activation = get_random_activation(settings)}
+      table.insert(genome.nodes, node)
+      table.insert(current_layer_nodes, node.id)
+      
+      -- Fully connect from previous layer
+      for _, prev_id in ipairs(last_layer_nodes) do
+        table.insert(genome.connections, {
+          in_node = prev_id,
+          out_node = node.id,
+          weight = (settings.rng or default_rng):random() * 2 - 1,
+          enabled = true,
+          innovation = get_innovation(settings)
+        })
+      end
+    end
+    last_layer_nodes = current_layer_nodes
   end
 
-  for i = 1, input_count do
-    for j = 1, output_count do
+  -- Create Output Nodes
+  local outputs = {}
+  for i = 1, output_count do
+    local node = {id = #genome.nodes + 1, type = "output", activation = output_activations[1]}
+    table.insert(genome.nodes, node)
+    table.insert(outputs, node.id)
+    
+    -- Fully connect from last hidden layer (or inputs)
+    for _, prev_id in ipairs(last_layer_nodes) do
       table.insert(genome.connections, {
-        in_node = i,
-        out_node = input_count + j,
-        weight = 1.0,
+        in_node = prev_id,
+        out_node = node.id,
+        weight = (settings.rng or default_rng):random() * 2 - 1,
         enabled = true,
         innovation = get_innovation(settings)
       })
@@ -168,7 +206,7 @@ function NEAT.crossover(parent1, parent2, settings)
   return child
 end
 
--- mutatuin: default, may call all other methods
+-- mutation: default, may call all other methods
 function NEAT.mutate(genome, settings)
   local settings = settings or default_settings
   local rng = settings.rng or default_rng
@@ -183,18 +221,27 @@ function NEAT.mutate(genome, settings)
   end
 
   -- activation mutation
-  if rng:random() < 0.1 then
-    local node = genome.nodes[rng:random(#genome.nodes)]
-    if node.type == "hidden" then
-      node.activation = get_random_activation(settings)
-    elseif node.type == "output" then
-      node.activation = get_random_output_activation(settings)
+  if rng:random() < (settings.mutation_activation_prob or 0.2) then
+    local hidden_nodes = {}
+    for _, node in ipairs(genome.nodes) do
+      if node.type == "hidden" or node.type == "output" then
+        table.insert(hidden_nodes, node)
+      end
+    end
+    
+    if #hidden_nodes > 0 then
+      local node = hidden_nodes[rng:random(#hidden_nodes)]
+      if node.type == "hidden" then
+        node.activation = get_random_activation(settings)
+      elseif node.type == "output" then
+        node.activation = get_random_output_activation(settings)
+      end
     end
   end
 
   -- structural mutations
-  if rng:random() < 0.05 then NEAT.mutate_add_connection(genome, settings) end
-  if rng:random() < 0.1 then NEAT.mutate_add_node(genome, settings) end
+  if rng:random() < (settings.mutation_add_conn_prob or 0.1) then NEAT.mutate_add_connection(genome, settings) end
+  if rng:random() < (settings.mutation_add_node_prob or 0.15) then NEAT.mutate_add_node(genome, settings) end
 
   if rng:random() < 0.05 then -- 5% chance to attempt to toggle connection, helps with disabled 'viruses'
     NEAT.mutate_toggle_connection(genome, settings)
@@ -344,16 +391,12 @@ function NEAT.evolve_population(population, settings)
     end
 
     -- 5. heal 'disabled' viruses. toggle connection for a random chosen one
-    local r = population[rng:random(elitism_count + survivors_count, #next_gen)]
-    NEAT.mutate_toggle_connection(r, settings)
+    local r = next_gen[rng:random(elitism_count + 1, #next_gen)]
+    if r then NEAT.mutate_toggle_connection(r, settings) end
   end
 
   -- 6. reset fitness values for the next values
   for _, g in ipairs(next_gen) do
-    -- 7. mutate every genome if its low
-    if g.fitness < (settings.min_fitness or default_min_fitness) then
-      NEAT.mutate(g, settings)
-    end
     g.fitness = 0
   end
 
@@ -363,38 +406,62 @@ end
 -- evaluation
 function NEAT.evaluate(genome, inputs, settings)
   local values = {}
-  for i, v in ipairs(inputs) do values[genome.nodes[i].id] = v end
+  local node_map = {}
+  
+  -- Create node lookup map and initialize values
+  for _, node in ipairs(genome.nodes) do
+    node_map[node.id] = node
+    values[node.id] = 0
+  end
 
-  -- sort connections by innovation to approximate feed-forward order
+  -- Initialize input nodes with input values
+  local input_idx = 1
+  for _, node in ipairs(genome.nodes) do
+    if node.type == "input" then
+      values[node.id] = inputs[input_idx] or 0
+      input_idx = input_idx + 1
+    end
+  end
+
+  -- Sort connections by innovation to approximate feed-forward order
+  -- This is a topological sort for genomes evolved without cycles.
   table.sort(genome.connections, function(a, b) return a.innovation < b.innovation end)
 
+  -- Use an accumulation table for sums to avoid multiple activation applications
+  local sums = {}
+  for _, node in ipairs(genome.nodes) do
+    if node.type ~= "input" then
+      sums[node.id] = 0
+    end
+  end
+
   for _, conn in ipairs(genome.connections) do
-    if conn.enabled and values[conn.in_node] then
-      local node = genome.nodes[conn.out_node]
-      local input = values[conn.in_node] * conn.weight
-      if not node then
-        print('WTF')
-        NEAT.print_genome(genome)
+    if conn.enabled then
+      local in_val = values[conn.in_node] or 0
+      local out_node = node_map[conn.out_node]
+      
+      if out_node then
+        -- Accumulate sum for out_node
+        sums[conn.out_node] = (sums[conn.out_node] or 0) + (in_val * conn.weight)
+        
+        -- Update value with activation of current sum.
+        local activation = out_node.activation.fn or NEAT.get_default_activation_by_name(out_node.activation.name).fn
+        values[conn.out_node] = activation(sums[conn.out_node])
       end
-      values[conn.out_node] = (node.activation.fn or NEAT.get_default_activation_by_name(node.activation.name).fn)( (values[conn.out_node] or 0) + input )
     end
   end
 
   local results = {}
   for _, node in ipairs(genome.nodes) do
-    if node.type == "output" then table.insert(results, values[node.id] or 0) end
+    if node.type == "output" then
+      table.insert(results, values[node.id] or 0)
+    end
   end
 
-  local return_values = {}
-  for i, v in ipairs(results) do
-    table.insert(return_values, v)
-  end
-
-  return return_values
+  return results
 end
 
 -- make a copy of a genome purely transferable between threads and serialization
--- be aware that custom activations and rng seed is lost
 function NEAT.purify_genome(genome)
   local copy = {
     fitness = genome.fitness,
@@ -403,7 +470,14 @@ function NEAT.purify_genome(genome)
     connections = {}
   }
 
+  -- TODO: manually copy all copiable settings. this is a hack that i dont like
+  for k, v in pairs(genome.settings or {}) do
+    if type(v) ~= "userdata" and type(v) ~= "function" and type(v) ~= "table" then
+      copy.settings[k] = v
+    end
+  end
   copy.settings.innovation_counter = genome.settings.innovation_counter
+  
   for _, node in ipairs(genome.nodes) do
     table.insert(copy.nodes, { id = node.id, type = node.type, activation = { name = node.activation.name } })
   end
